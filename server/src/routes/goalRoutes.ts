@@ -4,6 +4,7 @@ import { User } from '../models/User.js';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { isDbConnected } from '../config/db.js';
 import { inMemoryDb } from '../config/inMemoryDb.js';
+import { isNonEmptyString } from '../utils/validate.js';
 
 export const goalRouter = Router();
 
@@ -34,8 +35,8 @@ goalRouter.post('/', async (req: AuthenticatedRequest, res: Response): Promise<v
     const userId = req.user?.userId;
     const { title, category, dueDate, priority, hoursEstimate } = req.body;
 
-    if (!title) {
-      res.status(400).json({ success: false, message: 'Goal title is required.' });
+    if (!isNonEmptyString(title, 120)) {
+      res.status(400).json({ success: false, message: 'Goal title is required (max 120 characters).' });
       return;
     }
 

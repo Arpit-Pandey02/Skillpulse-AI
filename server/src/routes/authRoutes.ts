@@ -1,31 +1,49 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware.js';
-import { seedInitialUserData } from '../utils/seedNewUser.js';
+import { getJwtSecret } from '../config/jwt.js';
+import { toPublicUser } from '../utils/publicUser.js';
+import { isNonEmptyString, isValidEmail } from '../utils/validate.js';
 import { isDbConnected } from '../config/db.js';
 import { inMemoryDb } from '../config/inMemoryDb.js';
 import type { MemoryUser, CareerStatus } from '../config/inMemoryDb.js';
 
 export const authRouter = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_skillpulse_dev_2026';
-
 // Register a new student
 authRouter.post('/register', async (req, res): Promise<void> => {
   try {
     const { name, email, password, university, major, academicYear, targetRole } = req.body;
 
-    if (!name || !email || !password) {
-      res.status(400).json({ success: false, message: 'Name, email, and password are required.' });
+    if (!isNonEmptyString(name, 80) || !isValidEmail(email) || typeof password !== 'string') {
+      res.status(400).json({
+        success: false,
+        message: 'A name (max 80 characters), a valid email, and a password are required.',
+      });
       return;
     }
 
     if (password.length < 6) {
       res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
       return;
+    }
+
+    // bcrypt only uses the first 72 bytes of a password, so longer inputs are rejected.
+    if (Buffer.byteLength(password, 'utf8') > 72) {
+      res.status(400).json({ success: false, message: 'Password must be at most 72 bytes long.' });
+      return;
+    }
+
+    for (const [field, value] of Object.entries({ university, major, academicYear, targetRole })) {
+      if (value !== undefined && (typeof value !== 'string' || value.length > 120)) {
+        res.status(400).json({
+          success: false,
+          message: `"${field}" must be text of at most 120 characters.`,
+        });
+        return;
+      }
     }
 
     const cleanEmail = email.toLowerCase().trim();
@@ -54,7 +72,7 @@ authRouter.post('/register', async (req, res): Promise<void> => {
 
       const token = jwt.sign(
         { userId: user._id.toString(), email: user.email },
-        JWT_SECRET,
+        getJwtSecret(),
         { expiresIn: '7d' }
       );
 
@@ -113,12 +131,12 @@ authRouter.post('/register', async (req, res): Promise<void> => {
     inMemoryDb.users.set(newId, memoryUser);
     // Fresh students start with empty skills and goals until they intentionally add or select them
 
-    const token = jwt.sign({ userId: newId, email: cleanEmail }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: newId, email: cleanEmail }, getJwtSecret(), { expiresIn: '7d' });
 
     res.status(201).json({
       success: true,
       token,
-      user: memoryUser,
+      user: toPublicUser(memoryUser),
     });
   } catch (error) {
     console.error('[Register Error]', error);
@@ -131,7 +149,7 @@ authRouter.post('/login', async (req, res): Promise<void> => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (!isNonEmptyString(email, 254) || !isNonEmptyString(password, 200)) {
       res.status(400).json({ success: false, message: 'Email and password are required.' });
       return;
     }
@@ -153,7 +171,7 @@ authRouter.post('/login', async (req, res): Promise<void> => {
 
       const token = jwt.sign(
         { userId: user._id.toString(), email: user.email },
-        JWT_SECRET,
+        getJwtSecret(),
         { expiresIn: '7d' }
       );
 
@@ -189,14 +207,14 @@ authRouter.post('/login', async (req, res): Promise<void> => {
       return;
     }
 
-    const token = jwt.sign({ userId: memUser.id, email: memUser.email }, JWT_SECRET, {
+    const token = jwt.sign({ userId: memUser.id, email: memUser.email }, getJwtSecret(), {
       expiresIn: '7d',
     });
 
     res.json({
       success: true,
       token,
-      user: memUser,
+      user: toPublicUser(memUser),
     });
   } catch (error) {
     console.error('[Login Error]', error);
@@ -245,7 +263,7 @@ authRouter.get('/me', authMiddleware, async (req: AuthenticatedRequest, res: Res
 
     res.json({
       success: true,
-      user: memUser,
+      user: toPublicUser(memUser),
     });
   } catch (error) {
     console.error('[/me Error]', error);

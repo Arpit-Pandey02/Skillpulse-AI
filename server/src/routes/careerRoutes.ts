@@ -7,6 +7,8 @@ import { User } from '../models/User.js';
 import { CAREERS_CATALOG, CAREER_DOMAINS, RawCareerData } from '../data/careersCatalog.js';
 import { matchCareersRuleBased, DiscoveryResponses } from '../services/careerMatcher.js';
 import { generateCareerInsights } from '../services/geminiService.js';
+import { escapeRegex } from '../utils/validate.js';
+import { toPublicUser } from '../utils/publicUser.js';
 
 export const careerRouter = Router();
 
@@ -23,7 +25,7 @@ careerRouter.get('/', async (req, res): Promise<void> => {
         query.domain = domain;
       }
       if (search && String(search).trim()) {
-        const qRegex = { $regex: String(search).trim(), $options: 'i' };
+        const qRegex = { $regex: escapeRegex(String(search).trim().slice(0, 100)), $options: 'i' };
         query.$or = [
           { title: qRegex },
           { summary: qRegex },
@@ -394,7 +396,7 @@ careerRouter.post('/select', authMiddleware, async (req: AuthenticatedRequest, r
     res.json({
       success: true,
       message: `Target career path updated to "${targetRoleTitle}".`,
-      user,
+      user: toPublicUser(user),
     });
   } catch (error) {
     console.error('[Career Select Error]', error);

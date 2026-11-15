@@ -5,6 +5,7 @@ import { User } from '../models/User.js';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { isDbConnected } from '../config/db.js';
 import { inMemoryDb } from '../config/inMemoryDb.js';
+import { isNonEmptyString, parseNumberInRange } from '../utils/validate.js';
 
 export const skillRouter = Router();
 
@@ -35,9 +36,25 @@ skillRouter.post('/', async (req: AuthenticatedRequest, res: Response): Promise<
     const userId = req.user?.userId;
     const { name, category, level, targetHours, tags, color, badgeText } = req.body;
 
-    if (!name || !category) {
-      res.status(400).json({ success: false, message: 'Skill name and category are required.' });
+    if (!isNonEmptyString(name, 80) || !isNonEmptyString(category, 60)) {
+      res.status(400).json({
+        success: false,
+        message: 'Skill name (max 80 characters) and category (max 60 characters) are required.',
+      });
       return;
+    }
+
+    let parsedTargetHours = 40;
+    if (targetHours !== undefined && targetHours !== null && targetHours !== '') {
+      const target = parseNumberInRange(targetHours, 1, 2000);
+      if (target === null) {
+        res.status(400).json({
+          success: false,
+          message: 'targetHours must be a number between 1 and 2000.',
+        });
+        return;
+      }
+      parsedTargetHours = Math.round(target);
     }
 
     const tagList = Array.isArray(tags)
@@ -52,7 +69,7 @@ skillRouter.post('/', async (req: AuthenticatedRequest, res: Response): Promise<
         name: name.trim(),
         category,
         level: level || 'Beginner',
-        targetHours: parseInt(targetHours) || 40,
+        targetHours: parsedTargetHours,
         hoursSpent: 0,
         progressPercent: 0,
         lastPracticed: 'Just added',
@@ -76,7 +93,7 @@ skillRouter.post('/', async (req: AuthenticatedRequest, res: Response): Promise<
       level: level || 'Beginner',
       progressPercent: 0,
       hoursSpent: 0,
-      targetHours: parseInt(targetHours) || 40,
+      targetHours: parsedTargetHours,
       lastPracticed: 'Just added',
       verifiedProjectsCount: 0,
       tags: tagList,
@@ -98,7 +115,27 @@ skillRouter.post('/:id/practice', async (req: AuthenticatedRequest, res: Respons
     const userId = req.user?.userId;
     const skillId = String(req.params.id);
     const { hours, notes } = req.body;
-    const sessionHours = parseFloat(hours) || 1;
+
+    let sessionHours = 1;
+    if (hours !== undefined && hours !== null && hours !== '') {
+      const parsedHours = parseNumberInRange(hours, 0.1, 24);
+      if (parsedHours === null) {
+        res.status(400).json({
+          success: false,
+          message: 'hours must be a number between 0.1 and 24.',
+        });
+        return;
+      }
+      sessionHours = parsedHours;
+    }
+
+    if (notes !== undefined && notes !== null && (typeof notes !== 'string' || notes.length > 500)) {
+      res.status(400).json({
+        success: false,
+        message: 'notes must be text of at most 500 characters.',
+      });
+      return;
+    }
 
     if (isDbConnected()) {
       const skill = await Skill.findOne({ _id: skillId, userId });

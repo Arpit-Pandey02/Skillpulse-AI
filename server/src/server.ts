@@ -1,15 +1,14 @@
+// Must stay the very first import: loads server/.env before any other module runs.
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
+import { getJwtSecret } from './config/jwt.js';
 import { connectDB, isDbConnected } from './config/db.js';
 import { authRouter } from './routes/authRoutes.js';
 import { skillRouter } from './routes/skillRoutes.js';
 import { goalRouter } from './routes/goalRoutes.js';
 import { activityRouter } from './routes/activityRoutes.js';
 import { careerRouter } from './routes/careerRoutes.js';
-
-// Load environment variables
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -51,6 +50,9 @@ app.use('/api/*', (_req, res) => {
 
 // Start Express server and connect to MongoDB
 const startServer = async () => {
+  // Fail fast (in production) if JWT_SECRET is missing, before accepting any request.
+  getJwtSecret();
+
   await connectDB();
 
   app.listen(PORT, () => {
@@ -61,4 +63,5 @@ const startServer = async () => {
 
 startServer().catch((err) => {
   console.error('[SkillPulse API Fatal Error]', err);
+  process.exit(1);
 });

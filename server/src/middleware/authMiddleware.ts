@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../config/jwt.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -24,17 +25,16 @@ export const authMiddleware = (
   }
 
   const token = authHeader.split(' ')[1];
-  const secret = process.env.JWT_SECRET || 'super_secret_jwt_key_skillpulse_dev_2026';
 
   try {
-    const decoded = jwt.verify(token, secret) as {
+    const decoded = jwt.verify(token, getJwtSecret()) as {
       userId: string;
       email: string;
     };
 
     req.user = decoded;
     next();
-  } catch (error) {
+  } catch {
     res.status(401).json({
       success: false,
       message: 'Invalid or expired session token. Please log in again.',
